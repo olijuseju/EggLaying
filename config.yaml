@@ -1,0 +1,155 @@
+# =============================================================================
+# EggLaying pipeline configuration
+# All values reproduce exactly the experimental conditions reported in:
+#   Peñaranda Jara & Sánchez Salmerón (2025), Computers in Biology and Medicine
+#
+# Edit this file to adapt the method to different acquisition conditions.
+# All threshold values are in pixel units unless otherwise noted.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Video and acquisition settings
+# -----------------------------------------------------------------------------
+acquisition:
+  raw_fps: 5                  # Frame rate of the original 4K recording
+  review_fps: 25              # Frame rate of the compressed review video
+  block_duration_min: 12      # Duration of each review block (minutes)
+  block_frames: 18000         # Frames per block at review_fps
+                              # = review_fps * block_duration_min * 60
+
+# -----------------------------------------------------------------------------
+# Pre-processing — inter-frame difference and local worm mask M_t
+# -----------------------------------------------------------------------------
+preprocessing:
+  diff_threshold: 23          # Minimum grey-level change to classify a pixel
+                              # as a positive-motion region (Delta_t >= this)
+  mask_kernel_size: 27        # Side length of the elliptical dilation kernel
+                              # applied to the worm contour to define M_t
+
+# -----------------------------------------------------------------------------
+# Worm segmentation and skeletonisation
+# -----------------------------------------------------------------------------
+segmentation:
+  foreground_max: 110         # Upper bound of foreground grey-level range
+                              # for watershed segmentation
+  background_min: 165         # Lower bound of background grey-level range
+                              # for watershed segmentation
+  skel_min_length: 56         # Minimum valid skeleton arc length (pixels)
+  skel_max_length: 105        # Maximum valid skeleton arc length (pixels)
+                              # Frames outside this range are reprocessed
+                              # with a larger erosion kernel
+
+# -----------------------------------------------------------------------------
+# Egg-layed detector — appearance by inter-frame change within M_t
+# Criteria are evaluated sequentially on each connected component
+# -----------------------------------------------------------------------------
+egg_layed:
+  area_min: 18                # Minimum candidate area (pixels)
+  area_max: 90                # Maximum candidate area (pixels)
+
+  ratio_min: 0.50             # Minimum minor/major axis ratio of fitted ellipse
+
+  dist_skel_min: 6.0          # Minimum distance from skeleton to candidate (px)
+  dist_skel_max: 12.4         # Maximum distance from skeleton to candidate (px)
+                              # Constrains detection to the vulval region
+
+  ratio_egg_min: 0.32         # Minimum normalised size metric:
+                              # area / (max_width * skeleton_length)
+
+  # Local contrast — primary condition
+  sum_diff_threshold: 21      # Minimum mean inter-frame intensity change
+                              # in the 3x3 neighbourhood of the centroid
+
+  # Local contrast — alternative condition (all three must hold simultaneously)
+  sum_diff_alt: 9             # Alternative sum_diff threshold
+  dist_skel_alt_min: 6.4      # Minimum dist_skel_egg for alternative path
+  ratio_dist_min_alt: 0.38    # Minimum ratio_dist_min for alternative path
+  ratio_alt_min: 0.70         # Minimum ellipse ratio for alternative path
+
+  ratio_grad_max: 13.1        # Maximum Sobel gradient / sum_diff
+                              # Rejects illumination edges (not smooth eggs)
+
+  blue_dist_low: 5.0          # Upper bound of the low acceptance range
+                              # for nearest negative-motion pixel distance
+  blue_dist_high: 7.8         # Lower bound of the high acceptance range
+                              # Accepted if blue_dist < low OR > high
+
+  snippet_size: 128           # Side of stored diagnostic image crops (pixels)
+
+# -----------------------------------------------------------------------------
+# Egg-layed high-confidence thresholds (e_uncertainty = 1)
+# ALL must be satisfied simultaneously for automatic OK labelling
+# (no human review required)
+# -----------------------------------------------------------------------------
+egg_layed_high_confidence:
+  area_min: 21
+  ratio_min: 0.60
+  dist_skel_min: 7.0
+  dist_skel_max: 12.4
+  ratio_dist_min: 0.38
+  blue_dist_min: 10.5
+  sum_diff_min: 21
+  ratio_grad_max: 13.1
+
+# -----------------------------------------------------------------------------
+# Tracked-layed detector — appearance along the worm trajectory
+# Uses sustained-change image D = I_ini - I_t against first frame of block
+# -----------------------------------------------------------------------------
+tracked_layed:
+  sustained_diff_threshold: 30  # Minimum grey-level change in D
+
+  # Morphological filtering
+  area_min: 0.9               # Minimum candidate area (pixels)
+  area_max: 39.0              # Maximum candidate area (pixels)
+  elongation_min: 0.30        # Minimum elongation (minor/major of bounding rect)
+  bbox_dist_max: 200          # Max distance from candidate centroid to worm
+                              # bounding-box centroid (pixels)
+
+  # Geometric consistency
+  ratio_egg_min: 0.34         # Minimum normalised size metric (same as egg-layed)
+  ratio_diff_gray_min: 0.35   # Minimum max(Delta) / min(I) in candidate region
+
+  # Positional plausibility — central skeleton arc
+  # Valid arc: indices floor(L/5)*2 to floor(L/5)*3  (central 20% of skeleton)
+  skeleton_arc_start: 0.4     # Start of valid arc as fraction of skeleton length
+  skeleton_arc_end: 0.6       # End of valid arc as fraction of skeleton length
+  dist_to_skel_max: 4.0       # Max distance from candidate to selected skeleton
+                              # point (pixels)
+  min_dist_from_worm: 15      # Min distance from current worm position (pixels)
+  max_dist_from_recent: 100   # Max distance from any recent skeleton point (px)
+
+  # Temporal persistence
+  persistence_frames: 3       # Minimum tracking frames required (exclusive)
+                              # Detections with <= this value are discarded
+
+# -----------------------------------------------------------------------------
+# Tracked-layed high-confidence thresholds (e_uncertainty = 1)
+# ALL must be satisfied simultaneously for automatic OK labelling
+# -----------------------------------------------------------------------------
+tracked_layed_high_confidence:
+  area_min: 3.5
+  area_max: 25.0              # Exclusive upper bound
+  elongation_min: 0.45
+  ratio_egg_min: 0.85
+  dist_skel_max: 3.0
+  ratio_diff_gray_min: 0.40
+
+# -----------------------------------------------------------------------------
+# Fusion and decision
+# -----------------------------------------------------------------------------
+fusion:
+  distance_px: 11.8           # Maximum Euclidean distance between centroids
+                              # for a dual-branch match (pixels)
+                              # Matched pairs are labelled OK automatically
+
+# -----------------------------------------------------------------------------
+# Export settings
+# -----------------------------------------------------------------------------
+export:
+  review_fps: 25              # FPS used to compute timestamps in exported CSVs
+  seconds_per_block: 720      # Block duration in seconds (12 min * 60 s)
+                              # Used for absolute timestamp:
+                              # t_abs = frame / review_fps + block_idx * seconds_per_block
+  data_root: "egg_laying_new" # Output root folder name (created automatically
+                              # next to the egg_laying/ working folder)
+  imgs_suffix: "_imgs"        # Suffix appended to video name for snippet folder
