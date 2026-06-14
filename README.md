@@ -1,54 +1,124 @@
-# EggLaying — Assisted egg-laying quantification in *C. elegans* 4K video
+# EggLaying — Assisted Egg-Laying Detection in *C. elegans*
 
-This repository contains the implementation of the human-in-the-loop method described in:
+> **Human-in-the-loop assistance method for quantifying egg-laying events in *Caenorhabditis elegans* from 4K video recordings.**
 
-> Peñaranda Jara, J.J. & Sánchez Salmerón, A.J. (2025). *Development, implementation, and validation of a method for assisting in egg-laying trials in C. elegans.* Computers in Biology and Medicine.
-
-The method combines two complementary automatic detectors with a manual verification GUI to achieve near-complete egg-laying event recovery (recall 0.992) from long-duration 4K video recordings, with operator review times of 10–15 minutes per 6-hour video.
+[![Python](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg)](https://opencv.org/)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey.svg)]()
+[![Paper](https://img.shields.io/badge/Paper-Scientific%20Reports-red.svg)](https://doi.org/YOUR_DOI_HERE)
 
 ---
 
-## Repository structure
+## Associated Publication
+
+> **Development, implementation, and validation of a method for assisting in egg-laying trials in *C. elegans***
+> José Julio Peñaranda Jara, Antonio José Sánchez Salmerón
+> *Scientific Reports*, 2025
+> Affiliated with: Instituto de Automática e Informática Industrial (ai2), Universitat Politècnica de València
+> [Read the paper](https://doi.org/YOUR_DOI_HERE)
+
+---
+
+## Overview
+
+Manually annotating egg-laying events in long-duration 4K video recordings of *C. elegans* is time-consuming and prone to missed events. This software implements a **recall-first** human-in-the-loop pipeline that:
+
+1. **Automatically detects** egg-laying candidates using two complementary computer vision approaches
+2. **Presents candidates** to the operator via a minimalist GUI for rapid confirmation or rejection
+3. **Exports traceable results** as CSV with per-event timestamps and audit trail
+
+### Key results (validated on 6 independent 4K videos, 648,000 frames total)
+
+| Metric | Value |
+|--------|-------|
+| System-level recall | **0.992** (95% CI: 0.955–0.999) |
+| Precision | 0.77 |
+| F1-score | 0.85 |
+| Review time per 6h video | < 20 min |
+| Ground-truth events | 117 across 6 videos |
+
+---
+
+## How It Works
+
+### Automatic Detection Pipeline
+
+Two complementary detectors run in parallel on each video frame, both operating exclusively within a **local worm mask** (M_t) derived from the worm's segmented contour:
+
+**1. Egg-layed detector** (appearance by inter-frame change)
+- Computes inter-frame difference images (Δt = It − It−1)
+- Filters candidates by area, elliptical shape, skeleton proximity, local contrast, and gradient consistency
+- Detects sudden appearance of egg-shaped objects near the worm's vulval region
+
+**2. Tracked-layed detector** (appearance along trajectory)
+- Computes sustained-change images against the first frame of each block
+- Exploits accumulated worm trajectory to recover slow depositions or occluded events
+- Applies temporal persistence filtering to discard transient artefacts
+
+**Fusion logic** merges both detectors by spatio-temporal proximity:
+- Dual-branch coincidence → auto-accepted (OK)
+- Single-branch, high-confidence → auto-accepted (OK)
+- Single-branch, standard confidence → forwarded to human review (NOK)
+
+### Manual Verification Interface
+
+A Tkinter-based GUI presents candidates for rapid binary decisions:
+- Synchronized OK/NOK event lists with direct frame navigation
+- Overlay layers: worm trajectory, nearest egg marker, morphological detail
+- Frame-level adjustment and x2 flag for simultaneous depositions
+- Export to CSV with absolute timestamps across 12-minute video blocks
+
+---
+
+## Repository Structure
 
 ```
 EggLaying/
-├── EggLayingLinux/          # Linux version
-│   ├── gui.py               # Main entry point: launches the full interface
-│   ├── lib.py               # Detection pipeline (egg-layed + tracked-layed + fusion)
-│   ├── config.yaml          # All pipeline parameters (edit to adapt the method)
-│   ├── prev_icon.png        # Playback control icons (required at runtime)
-│   ├── pause_icon.png
-│   ├── next_icon.png
-│   ├── backward_icon.png
-│   └── forward_icon.png
-├── EggLayingWindows/        # Windows version (identical logic)
-│   └── (same files as above)
-├── sample_data/             # Sample annotated block for end-to-end testing
-│   ├── sample_block.mp4     # One 12-minute block compressed at 25 fps
-│   └── sample_gt.csv        # Ground-truth annotations for the sample block
-└── requirements.txt         # Pinned Python dependencies
+├── EggLayingLinux/               # Linux version
+├── EggLayingWindows/             # Windows version (same codebase, OS-adapted)
+├── results/                      # Sample data for one annotated video block
+│   ├── 000000.mp4                # Sample video block (12 min, 25 fps)
+│   ├── 000001.mp4                # Additional sample block
+│   ├── 000000_imgs/              # Diagnostic snippet crops for block 000000
+│   ├── 000001_imgs/              # Diagnostic snippet crops for block 000001
+│   ├── 000001_rare_poses/        # Flagged rare worm poses for block 000001
+│   ├── 000000_metadata_eggs_frames.csv   # Per-event frame numbers (block 000000)
+│   ├── 000000_metadata_eggs_times.csv    # Per-event timestamps (block 000000)
+│   ├── 000001_metadata_eggs_frames.csv   # Per-event frame numbers (block 000001)
+│   ├── 000001_metadata_eggs_times.csv    # Per-event timestamps (block 000001)
+│   ├── 000000_ok_eggs_frames.npy         # Auto-accepted candidates (block 000000)
+│   ├── 000000_nok_eggs_frames.npy        # Candidates sent to review (block 000000)
+│   ├── 000001_ok_eggs_frames.npy         # Auto-accepted candidates (block 000001)
+│   ├── 000001_nok_eggs_frames.npy        # Candidates sent to review (block 000001)
+│   ├── 000000_poses.npy                  # Worm pose data (block 000000)
+│   ├── 000001_poses.npy                  # Worm pose data (block 000001)
+│   ├── 000000_track_eggs_frames.npy      # Tracked-layed detections (block 000000)
+│   ├── 000001_track_eggs_frames.npy      # Tracked-layed detections (block 000001)
+│   └── 000000_img_result_tracking.bmp    # Trajectory visualisation (block 000000)
+│   └── 000001_img_result_tracking.bmp    # Trajectory visualisation (block 000001)
+└── README.md
 ```
 
 ---
 
-## Requirements
+## Sample Data
 
-- Python 3.8 or later
-- See `requirements.txt` for all pinned dependencies
+The `results/` folder contains sample output for two annotated 12-minute video blocks, enabling end-to-end functional testing of the pipeline.
 
-Install dependencies:
+For each block (`000000`, `000001`) the following files are provided:
 
-```bash
-pip install -r requirements.txt
-```
-
-### Linux
-
-No additional system dependencies beyond Python and `requirements.txt`.
-
-### Windows
-
-Tkinter is included with standard Python distributions on Windows. If missing, reinstall Python from [python.org](https://www.python.org) and ensure the "tcl/tk and IDLE" option is selected during installation.
+| File | Description |
+|------|-------------|
+| `XXXXXX.mp4` | Video block (12 min, 25 fps) |
+| `XXXXXX_metadata_eggs_frames.csv` | Validated egg-laying events with frame numbers |
+| `XXXXXX_metadata_eggs_times.csv` | Validated egg-laying events with timestamps |
+| `XXXXXX_ok_eggs_frames.npy` | Auto-accepted candidates (OK) |
+| `XXXXXX_nok_eggs_frames.npy` | Candidates forwarded to manual review (NOK) |
+| `XXXXXX_track_eggs_frames.npy` | Tracked-layed detector output |
+| `XXXXXX_poses.npy` | Worm skeleton pose data per frame |
+| `XXXXXX_img_result_tracking.bmp` | Worm trajectory visualisation over the plate |
+| `XXXXXX_imgs/` | 128×128 px diagnostic snippet crops per candidate |
+| `XXXXXX_rare_poses/` | Frames flagged as rare worm poses |
 
 ---
 
@@ -59,153 +129,69 @@ Tkinter is included with standard Python distributions on Windows. If missing, r
 ```bash
 git clone https://github.com/olijuseju/EggLaying.git
 cd EggLaying/EggLayingLinux
-pip install -r ../requirements.txt
+pip install -r requirements.txt
+python main.py
 ```
 
 ### Windows
 
 ```bash
 git clone https://github.com/olijuseju/EggLaying.git
-cd EggLaying\EggLayingWindows
-pip install -r ..\requirements.txt
+cd EggLaying/EggLayingWindows
+pip install -r requirements.txt
+python main.py
+```
+
+### Dependencies
+
+```
+opencv-python
+numpy
+pandas
+Pillow
+scikit-image
+tkinter  # included in standard Python on most platforms
 ```
 
 ---
 
-## Folder structure expected at runtime
+## Detection Parameters
 
-The application expects video data organised as follows:
+All parameters reproduce exactly the values used in the paper:
 
-```
-egg_laying/                          <- working_path (selected via GUI or restored from rutas.txt)
-└── <assay_name>/                    <- one subfolder per assay
-    ├── 0.mp4                        <- 12-minute review blocks at 25 fps, named 0, 1, 2...
-    ├── 1.mp4
-    └── ...
-
-egg_laying_new/                      <- created automatically at the same level as egg_laying/
-└── <assay_name>/
-    ├── 0_ok_eggs_frames.npy         <- auto-accepted events (saved after every action)
-    ├── 0_nok_eggs_frames.npy        <- uncertain events sent to human review
-    ├── 0_track_eggs_frames.npy      <- tracked-layed detections
-    ├── 0_metadata_eggs_frames.csv   <- per-event spatial metadata (frame, centroid x/y)
-    ├── 0_img_result_tracking.bmp    <- full worm trajectory overlay image
-    ├── 0_imgs/                      <- 128x128 px diagnostic snippets per candidate
-    └── metadata_eggs_final.csv      <- consolidated export with absolute timestamps
-```
-
-The last used `working_path` is saved automatically to `rutas.txt` in the application directory and restored on next launch.
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Motion threshold | 23 grey levels | Inter-frame difference threshold |
+| Dilation kernel | 27×27 ellipse | Local worm mask M_t |
+| Egg area range | 18–90 px | Connected component filter |
+| Axis ratio | > 0.50 | Elliptical shape criterion |
+| Fusion radius | 11.8 px | Spatio-temporal merging distance |
+| Skeleton valid range | 56–105 px | Arc length validity |
 
 ---
 
-## Usage
+## Experimental Setup
 
-### Step 1 — Launch the application
-
-```bash
-# Linux
-cd EggLayingLinux
-python gui.py
-
-# Windows
-cd EggLayingWindows
-python gui.py
-```
-
-On first launch, select the working folder (`egg_laying/`) using the **Change working folder** button in the **Processing** tab. The output folder `egg_laying_new/` is created automatically next to it.
-
-### Step 2 — Run the automatic detection pipeline (Processing tab)
-
-1. Select an assay from the left list.
-2. Click a video in the right list to process a single 12-minute block.
-3. Or click **Process all videos** to process all blocks of the selected assay sequentially.
-4. Or click **Process all assays** to process all assays in the working folder (parallel threads).
-
-Completed videos are highlighted in blue in the list.
-
-### Step 3 — Review candidates (Checking tab)
-
-Switch to the **Checking** tab (or press `c`):
-
-1. Select a video from the right-hand list.
-2. The interface populates two synchronised lists:
-   - **NOK list** (left, red): uncertain candidates requiring a decision.
-   - **OK list** (right, green): automatically accepted events.
-
-Use the five-action decision set:
-
-| Action | Description |
-|--------|-------------|
-| **Move to OK** | Confirm a NOK candidate as a genuine egg-laying event |
-| **Move to NOK** | Reclassify an auto-accepted event as spurious |
-| **Delete** | Remove a candidate permanently from either list |
-| **Undo** | Revert the last action on either list |
-| **x2** | Duplicate an event (two eggs deposited simultaneously, registered as one detection) |
-
-All decisions are saved incrementally to `.npy` files after each action, preventing data loss on interruption.
-
-Navigation shortcuts:
-
-| Key | Action |
-|-----|--------|
-| `p` | Switch to Processing tab |
-| `c` | Switch to Checking tab, focus video list |
-| `o` | Focus OK list, jump to first item |
-| `n` | Focus NOK list, jump to first item |
-| `←` `→` | Step one frame backward / forward |
-| `↑` `↓` | Move to previous / next event in the active list |
-| `+` / `-` | Increase / decrease the frame-skip increment |
-
-Overlay toggles (bottom-right panel):
-
-| Toggle | Description |
-|--------|-------------|
-| **Mark nearest egg** | Draws a circle at the nearest confirmed egg position on the video |
-| **Show track** | Opens a floating window with the full worm trajectory overlay |
-| **Show worm details** | Opens a floating window with a crop from the original 4K frame |
-
-Fine temporal adjustment: type the corrected frame number in the entry field below the diagnostic snippet and press Enter (or click **Edit & Order**).
-
-### Step 4 — Export results
-
-**Save results of this video** (Checking tab): writes two CSV files per block into `egg_laying_new/<assay>/`:
-- `<video>_metadata_eggs_times_final.csv` — timestamps (hh:mm:ss) relative to block start.
-- `<video>_metadata_eggs_frames_final.csv` — frame numbers within the block at 25 fps.
-
-**Save results of this assay** (Processing tab): consolidates all per-block CSVs into a single `metadata_eggs_final.csv` with absolute timestamps:
-
-```
-t_abs (seconds) = frame_number / 25 + block_index * 720
-```
-
-where 720 = 12 minutes × 60 seconds per block. The output columns are:
-`full_data` (hh:mm:ss), `video` (block index), `frame_num`.
-
----
-
-## End-to-end functional test with sample data
-
-1. Place `sample_data/sample_block.mp4` in `egg_laying/sample/0.mp4`.
-2. Launch `gui.py` and select the `egg_laying/` parent as the working folder.
-3. Select the `sample` assay, click the block in the right list to process it.
-4. Switch to the Checking tab, select the processed block, and review candidates.
-5. Click **Save results of this video** and compare the exported `frame_num` column against `sample_data/sample_gt.csv`.
+- **Camera:** Motif (Loopbio) 4K system, 3840×2160 px, 5 fps
+- **Review speed:** 25 fps (5× real time)
+- **Block duration:** 12 minutes (18,000 frames per block)
+- **Strain:** *C. elegans* N2 on 55mm NGM plates seeded with *E. coli* OP50
+- **Animals:** Young adults, one per plate, freely moving (solid media)
 
 ---
 
 ## Citation
 
-If you use this code or method, please cite:
+If you use this software in your research, please cite:
 
 ```bibtex
-@article{Penaranda2025_EggLayingCode,
-  author    = {Pe{\~n}aranda Jara, Jos{\'e} Julio and
-               S{\'a}nchez Salmer{\'o}n, Antonio Jos{\'e}},
-  title     = {Development, implementation, and validation of a method
-               for assisting in egg-laying trials in \textit{C. elegans}},
-  journal   = {Computers in Biology and Medicine},
-  year      = {2025},
-  note      = {Code: \url{https://github.com/olijuseju/EggLaying}}
+@article{penaranda2025egglaying,
+  title={Development, implementation, and validation of a method for
+         assisting in egg-laying trials in {C. elegans}},
+  author={Peñaranda Jara, José Julio and Sánchez Salmerón, Antonio José},
+  journal={Scientific Reports},
+  year={2025},
+  doi={YOUR_DOI_HERE}
 }
 ```
 
@@ -213,6 +199,16 @@ If you use this code or method, please cite:
 
 ## Acknowledgements
 
-We thank Nuria Flames (Instituto de Biomedicina de Valencia, IBV) for providing the experimental videos and datasets, and Thomas Boulin (Université Claude Bernard Lyon 1) for testing the code on independent equipment.
+We thank Nuria Flames (Instituto de Biomedicina de Valencia, IBV) for providing the videos and datasets, and Thomas Boulin (Université Claude Bernard Lyon 1) for enabling validation on his equipment.
 
-This work was supported by Comunitat Valenciana (Spain) under grant INVEST/2023/541 and EU-FEDER grant IDIFEDER/2018/025.
+Funded by Comunitat Valenciana grant INVEST/2023/541 and EU-FEDER Comunitat Valenciana 2014-2020 grant IDIFEDER/2018/025.
+
+---
+
+## Authors
+
+**José Julio Peñaranda Jara** — [GitHub](https://github.com/olijuseju) · [LinkedIn](https://www.linkedin.com/in/jose-julio-pe%C3%B1aranda-jara-b75673206/)
+Instituto de Automática e Informática Industrial (ai2), Universitat Politècnica de València
+
+**Antonio José Sánchez Salmerón** — asanchez@isa.upv.es
+Instituto de Automática e Informática Industrial (ai2), Universitat Politècnica de València
